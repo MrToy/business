@@ -1,4 +1,4 @@
-package main
+package business
 
 import (
 	"github.com/gohttp/response"
@@ -47,11 +47,12 @@ type Products struct {
 }
 
 type ProductHandler struct {
-	sess *mgo.Session
+	Sess *mgo.Session
+	Db string
 }
 
 func (this *ProductHandler) Post(w http.ResponseWriter, r *http.Request) {
-	sess := this.sess.Clone()
+	sess := this.Sess.Clone()
 	defer sess.Close()
 	r.ParseForm()
 	owner := bson.ObjectIdHex(r.Header.Get("X-Auth-Id"))
@@ -62,14 +63,14 @@ func (this *ProductHandler) Post(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	shop := Shop{}
-	if err := sess.DB(MongoDB).C("shops").Find(&bson.M{"owner": owner}).One(&shop); err != nil {
+	if err := sess.DB(this.Db).C("shops").Find(&bson.M{"owner": owner}).One(&shop); err != nil {
 		response.InternalServerError(w, err.Error())
 		return
 	}
 	product.Shop = shop.Id
 	product.Id = bson.NewObjectId()
 	product.Date = time.Now()
-	if err := sess.DB(MongoDB).C("products").Insert(product); err != nil {
+	if err := sess.DB(this.Db).C("products").Insert(product); err != nil {
 		response.InternalServerError(w, err.Error())
 		return
 	}
@@ -77,7 +78,7 @@ func (this *ProductHandler) Post(w http.ResponseWriter, r *http.Request) {
 }
 
 func (this *ProductHandler) PutById(w http.ResponseWriter, r *http.Request) {
-	sess := this.sess.Clone()
+	sess := this.Sess.Clone()
 	defer sess.Close()
 	r.ParseForm()
 	owner := bson.ObjectIdHex(r.Header.Get("X-Auth-Id"))
@@ -88,11 +89,11 @@ func (this *ProductHandler) PutById(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	shop := Shop{}
-	if err := sess.DB(MongoDB).C("shops").Find(&bson.M{"owner": owner}).One(&shop); err != nil {
+	if err := sess.DB(this.Db).C("shops").Find(&bson.M{"owner": owner}).One(&shop); err != nil {
 		response.InternalServerError(w, err.Error())
 		return
 	}
-	if err := sess.DB(MongoDB).C("products").Update(&bson.M{"_id": bson.ObjectIdHex(r.FormValue(":id")), "shop": shop.Id}, &bson.M{"$set": product}); err != nil {
+	if err := sess.DB(this.Db).C("products").Update(&bson.M{"_id": bson.ObjectIdHex(r.FormValue(":id")), "shop": shop.Id}, &bson.M{"$set": product}); err != nil {
 		response.InternalServerError(w, err.Error())
 		return
 	}
@@ -100,7 +101,7 @@ func (this *ProductHandler) PutById(w http.ResponseWriter, r *http.Request) {
 }
 
 func (this *ProductHandler) Get(w http.ResponseWriter, r *http.Request) {
-	sess := this.sess.Clone()
+	sess := this.Sess.Clone()
 	defer sess.Close()
 	r.ParseForm()
 	query := new(ProductQuery)
@@ -115,16 +116,16 @@ func (this *ProductHandler) Get(w http.ResponseWriter, r *http.Request) {
 		query.ShopId = bson.ObjectIdHex(query.Shop)
 	}
 	products := new(Products)
-	if err := sess.DB(MongoDB).C("products").Find(&query).Select(&bson.M{"info": 0, "props": 0, "spec": 0}).Skip(query.Skip).Limit(query.Limit).Sort("-date").All(&products.Data); err != nil {
+	if err := sess.DB(this.Db).C("products").Find(&query).Select(&bson.M{"info": 0, "props": 0, "spec": 0}).Skip(query.Skip).Limit(query.Limit).Sort("-date").All(&products.Data); err != nil {
 		response.InternalServerError(w, err.Error())
 		return
 	}
-	products.Total, _ = sess.DB(MongoDB).C("products").Find(&query).Count()
+	products.Total, _ = sess.DB(this.Db).C("products").Find(&query).Count()
 	response.JSON(w, &products)
 }
 
 func (this *ProductHandler) GetById(w http.ResponseWriter, r *http.Request) {
-	sess := this.sess.Clone()
+	sess := this.Sess.Clone()
 	defer sess.Close()
 	id := r.FormValue(":id")
 	if !bson.IsObjectIdHex(id) {
@@ -132,7 +133,7 @@ func (this *ProductHandler) GetById(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	product := Product{}
-	if err := sess.DB(MongoDB).C("products").FindId(bson.ObjectIdHex(id)).One(&product); err != nil {
+	if err := sess.DB(this.Db).C("products").FindId(bson.ObjectIdHex(id)).One(&product); err != nil {
 		response.InternalServerError(w, err.Error())
 		return
 	}
@@ -140,7 +141,7 @@ func (this *ProductHandler) GetById(w http.ResponseWriter, r *http.Request) {
 }
 
 func (this *ProductHandler) DelById(w http.ResponseWriter, r *http.Request) {
-	sess := this.sess.Clone()
+	sess := this.Sess.Clone()
 	defer sess.Close()
 	id, owner := r.FormValue(":id"), bson.ObjectIdHex(r.Header.Get("X-Auth-Id"))
 	if !bson.IsObjectIdHex(id) {
@@ -148,11 +149,11 @@ func (this *ProductHandler) DelById(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	shop := Shop{}
-	if err := sess.DB(MongoDB).C("shops").Find(&bson.M{"owner": owner}).One(&shop); err != nil {
+	if err := sess.DB(this.Db).C("shops").Find(&bson.M{"owner": owner}).One(&shop); err != nil {
 		response.InternalServerError(w, err.Error())
 		return
 	}
-	if err := sess.DB(MongoDB).C("products").Remove(bson.M{"_id": bson.ObjectIdHex(id), "shop": shop.Id}); err != nil {
+	if err := sess.DB(this.Db).C("products").Remove(bson.M{"_id": bson.ObjectIdHex(id), "shop": shop.Id}); err != nil {
 		response.InternalServerError(w, err.Error())
 		return
 	}

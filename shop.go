@@ -1,4 +1,4 @@
-package main
+package business
 
 import (
 	"github.com/gohttp/response"
@@ -32,11 +32,12 @@ type Shops struct {
 }
 
 type ShopHandler struct {
-	sess *mgo.Session
+	Sess *mgo.Session
+	Db string
 }
 
 func (this *ShopHandler) Post(w http.ResponseWriter, r *http.Request) {
-	sess := this.sess.Clone()
+	sess := this.Sess.Clone()
 	defer sess.Close()
 	r.ParseForm()
 	owner := bson.ObjectIdHex(r.Header.Get("X-Auth-Id"))
@@ -49,15 +50,15 @@ func (this *ShopHandler) Post(w http.ResponseWriter, r *http.Request) {
 	shop.Id = bson.NewObjectId()
 	shop.Owner = owner
 	shop.Date = time.Now()
-	if err := sess.DB(MongoDB).C("shops").EnsureIndex(mgo.Index{Key: []string{"name"}, Unique: true}); err != nil {
+	if err := sess.DB(this.Db).C("shops").EnsureIndex(mgo.Index{Key: []string{"name"}, Unique: true}); err != nil {
 		response.InternalServerError(w, err.Error())
 		return
 	}
-	if err := sess.DB(MongoDB).C("shops").EnsureIndex(mgo.Index{Key: []string{"owner"}, Unique: true}); err != nil {
+	if err := sess.DB(this.Db).C("shops").EnsureIndex(mgo.Index{Key: []string{"owner"}, Unique: true}); err != nil {
 		response.InternalServerError(w, err.Error())
 		return
 	}
-	if err := sess.DB(MongoDB).C("shops").Insert(shop); err != nil {
+	if err := sess.DB(this.Db).C("shops").Insert(shop); err != nil {
 		if mgo.IsDup(err) {
 			response.InternalServerError(w, "店铺已存在")
 		} else {
@@ -65,7 +66,7 @@ func (this *ShopHandler) Post(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
-	if err := sess.DB(MongoDB).C("users").Update(&bson.M{"_id": owner}, &bson.M{"$set": &bson.M{"group.saler": true}}); err != nil {
+	if err := sess.DB(this.Db).C("users").Update(&bson.M{"_id": owner}, &bson.M{"$set": &bson.M{"group.saler": true}}); err != nil {
 		response.InternalServerError(w, err.Error())
 		return
 	}
@@ -73,7 +74,7 @@ func (this *ShopHandler) Post(w http.ResponseWriter, r *http.Request) {
 }
 
 func (this *ShopHandler) Get(w http.ResponseWriter, r *http.Request) {
-	sess := this.sess.Clone()
+	sess := this.Sess.Clone()
 	defer sess.Close()
 	r.ParseForm()
 	shopQuery := new(ShopQuery)
@@ -82,20 +83,20 @@ func (this *ShopHandler) Get(w http.ResponseWriter, r *http.Request) {
 		shopQuery.Sort = "-date"
 	}
 	shops := new(Shops)
-	if err := sess.DB(MongoDB).C("shops").Find(&shopQuery).Select(&bson.M{"info": 0}).Sort(shopQuery.Sort).Skip(shopQuery.Skip).Limit(shopQuery.Limit).All(&shops.Data); err != nil {
+	if err := sess.DB(this.Db).C("shops").Find(&shopQuery).Select(&bson.M{"info": 0}).Sort(shopQuery.Sort).Skip(shopQuery.Skip).Limit(shopQuery.Limit).All(&shops.Data); err != nil {
 		response.InternalServerError(w, err.Error())
 		return
 	}
-	shops.Total, _ = sess.DB(MongoDB).C("shops").Find(&shopQuery).Count()
+	shops.Total, _ = sess.DB(this.Db).C("shops").Find(&shopQuery).Count()
 	response.JSON(w, shops)
 }
 
 func (this *ShopHandler) GetMyShop(w http.ResponseWriter, r *http.Request) {
-	sess := this.sess.Clone()
+	sess := this.Sess.Clone()
 	defer sess.Close()
 	owner := bson.ObjectIdHex(r.Header.Get("X-Auth-Id"))
 	shop := Shop{}
-	if err := sess.DB(MongoDB).C("shops").Find(&bson.M{"owner": owner}).One(&shop); err != nil {
+	if err := sess.DB(this.Db).C("shops").Find(&bson.M{"owner": owner}).One(&shop); err != nil {
 		response.InternalServerError(w, err.Error())
 		return
 	}
@@ -103,7 +104,7 @@ func (this *ShopHandler) GetMyShop(w http.ResponseWriter, r *http.Request) {
 }
 
 func (this *ShopHandler) PutMyShop(w http.ResponseWriter, r *http.Request) {
-	sess := this.sess.Clone()
+	sess := this.Sess.Clone()
 	defer sess.Close()
 	owner := bson.ObjectIdHex(r.Header.Get("X-Auth-Id"))
 	r.ParseForm()
@@ -113,7 +114,7 @@ func (this *ShopHandler) PutMyShop(w http.ResponseWriter, r *http.Request) {
 		response.Forbidden(w, err.Error())
 		return
 	}
-	if err := sess.DB(MongoDB).C("shops").Update(bson.M{"owner": owner}, bson.M{"$set": shop}); err != nil {
+	if err := sess.DB(this.Db).C("shops").Update(bson.M{"owner": owner}, bson.M{"$set": shop}); err != nil {
 		if mgo.IsDup(err) {
 			response.InternalServerError(w, "店铺名已存在")
 		} else {
@@ -125,7 +126,7 @@ func (this *ShopHandler) PutMyShop(w http.ResponseWriter, r *http.Request) {
 }
 
 func (this *ShopHandler) GetById(w http.ResponseWriter, r *http.Request) {
-	sess := this.sess.Clone()
+	sess := this.Sess.Clone()
 	defer sess.Close()
 	id := r.FormValue(":id")
 	if !bson.IsObjectIdHex(id) {
@@ -133,7 +134,7 @@ func (this *ShopHandler) GetById(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	shop := Shop{}
-	if err := sess.DB(MongoDB).C("shops").FindId(bson.ObjectIdHex(id)).One(&shop); err != nil {
+	if err := sess.DB(this.Db).C("shops").FindId(bson.ObjectIdHex(id)).One(&shop); err != nil {
 		response.InternalServerError(w, err.Error())
 		return
 	}
