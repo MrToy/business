@@ -2,43 +2,41 @@ package business
 
 import (
 	"github.com/gohttp/response"
-	"github.com/gorilla/schema"
 	"gopkg.in/mgo.v2"
 	"gopkg.in/mgo.v2/bson"
 	"gopkg.in/validator.v2"
+	"log"
 	"net/http"
 	"time"
 )
 
 type Order struct {
-	Id      bson.ObjectId `json:"id" bson:"_id,omitempty" schema:"-"`
-	ShopId  bson.ObjectId `json:"shop" bson:",omitempty" schema:"-"`
-	Buyer   bson.ObjectId `json:"buyer" bson:",omitempty" schema:"-"`
-	State   string        `json:"state" bson:",omitempty" schema:"-"`
-	Date    time.Time     `json:"date" schema:"-"`
-	Price   int           `json:"price" schema:"-"`
-	Shop    string        `json:"-" bson:"-" validate:"len=24"`
-	Contact Contact       `json:"contact"`
-	Items   []struct {
-		Id     bson.ObjectId     `json:"id"`
-		Spec   map[string]string `json:"spec"`
-		Number int               `json:"number"`
-	} `json:"products"`
+	Id    bson.ObjectId `json:"id" bson:"_id,omitempty" schema:"-"`
+	Buyer bson.ObjectId `json:"buyer" bson:",omitempty" schema:"-"`
+	State string        `json:"state" bson:",omitempty" schema:"-"`
+	Date  time.Time     `json:"date" schema:"-"`
+	Price int           `json:"price" schema:"-"`
+	Shop  bson.ObjectId `json:"shop" bson:",omitempty"`
+	//Contact Contact       `json:"contact"`
+	Items []struct {
+		Id       bson.ObjectId `json:"id"`
+		Spec     string        `json:"spec"`
+		Quantity int           `json:"quantity"`
+		Name     string        `json:"name"`
+		Price    int           `json:"price"`
+	} `json:"items"`
 }
 
 type OrderQuery struct {
-	Skip    int           `bson:"-"`
-	Limit   int           `bson:"-"`
-	Sort    string        `bson:"-"`
-	Shop    string        `bson:"-"`
-	Buyer   string        `bson:"-"`
-	BuyerId bson.ObjectId `bson:"buyer,omitempty" schema:"-"`
-	ShopId  bson.ObjectId `bson:"shop,omitempty" schema:"-"`
+	Skip   int
+	Limit  int
+	Sort   string
+	Target string
 }
 
 type Orders struct {
-	Total int       `json:"total"`
-	Data  []Product `json:"data"`
+	Total int     `json:"total"`
+	Data  []Order `json:"data"`
 }
 
 type OrderHandler struct {
@@ -52,39 +50,91 @@ func (this *OrderHandler) Post(w http.ResponseWriter, r *http.Request) {
 	r.ParseForm()
 	buyer := bson.ObjectIdHex(r.Header.Get("X-Auth-Id"))
 	order := new(Order)
-	schema.NewDecoder().Decode(order, r.Form)
+	NewDecoder().Decode(order, r.Form)
 	if err := validator.Validate(order); err != nil {
 		response.Forbidden(w, err.Error())
 		return
 	}
 	order.Id = bson.NewObjectId()
-	order.ShopId = bson.ObjectIdHex(order.Shop)
 	order.Buyer = buyer
 	order.State = "待付款"
 	order.Date = time.Now()
 	order.Price = 0
-	for _, item := range order.Items {
+	for i, item := range order.Items {
 		product := Product{}
 		if err := sess.DB(this.Db).C("products").FindId(item.Id).One(&product); err != nil {
 			response.InternalServerError(w, err.Error())
 			return
 		}
-		if product.Shop != order.ShopId {
+		if product.Shop != order.Shop {
 			response.Forbidden(w, "店铺信息错误")
 			return
 		}
-		if product.Inventory < item.Number {
+		if product.Inventory < item.Quantity {
 			response.Forbidden(w, "库存不足")
 			return
 		}
-		order.Price += product.Price * item.Number
+		order.Price += product.Price * item.Quantity
+		order.Items[i].Price = product.Price
+		order.Items[i].Name = product.Name
 	}
 
 	if err := sess.DB(this.Db).C("orders").Insert(order); err != nil {
 		response.InternalServerError(w, err.Error())
 		return
 	}
-	response.NoContent(w)
+	response.JSON(w, order.Id)
+}
+
+func (this *OrderHandler) Get(w http.ResponseWriter, r *http.Request) {
+	sess := this.Sess.Clone()
+	defer sess.Close()
+	r.ParseForm()
+	viewer := bson.ObjectIdHex(r.Header.Get("X-Auth-Id"))
+	query := new(OrderQuery)
+	NewDecoder().Decode(query, r.Form)
+	if len(query.Sort) == 0 {
+		query.Sort = "-date"
+	}
+	orders := new(Orders)
+	if query.Target == "buyer" {
+		if err := sess.DB(this.Db).C("orders").Find(&bson.M{"buyer": viewer}).Skip(query.Skip).Limit(query.Limit).Sort("-date").All(&orders.Data); err != nil {
+			response.InternalServerError(w, err.Error())
+			return
+		}
+		orders.Total, _ = sess.DB(this.Db).C("orders").Find(&bson.M{"buyer": viewer}).Count()
+	} else if query.Target == "shoper" {
+		shop := Shop{}
+		if err := sess.DB(this.Db).C("shops").Find(bson.M{"owner": viewer}).One(&shop); err != nil {
+			response.InternalServerError(w, err.Error())
+			return
+		}
+		log.Println(shop)
+		if shop.Owner == viewer {
+			if err := sess.DB(this.Db).C("orders").Find(&bson.M{"shop": shop.Id}).Skip(query.Skip).Limit(query.Limit).Sort("-date").All(&orders.Data); err != nil {
+				response.InternalServerError(w, err.Error())
+				return
+			}
+			orders.Total, _ = sess.DB(this.Db).C("orders").Find(&bson.M{"shop": shop.Id}).Count()
+		}
+	}
+	response.JSON(w, &orders)
+}
+
+func (this *OrderHandler) GetById(w http.ResponseWriter, r *http.Request) {
+	sess := this.Sess.Clone()
+	defer sess.Close()
+	id := r.FormValue(":id")
+	if !bson.IsObjectIdHex(id) {
+		response.Forbidden(w, "error id")
+		return
+	}
+	order := Order{}
+	if err := sess.DB(this.Db).C("orders").FindId(bson.ObjectIdHex(id)).One(&order); err != nil {
+		response.InternalServerError(w, err.Error())
+		return
+	}
+	response.JSON(w, &order)
 }
 
 // func (this *ProductHandler) PutById(w http.ResponseWriter, r *http.Request) {

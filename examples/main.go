@@ -39,9 +39,10 @@ func main() {
 	m.Del("/products/:id", productHandler.DelById)
 
 	m.Post("/orders", orderHandler.Post)
-	// m.Get("/orders", productHandler.Get)
+	m.Get("/orders", orderHandler.Get)
+	m.Get("/orders/:id", orderHandler.GetById)
 	// m.Put("/orders/:id", productHandler.PutById)
-	// m.Get("/products/:id", productHandler.GetById)
+
 	// m.Del("/products/:id", productHandler.DelById)
 
 	if err := http.ListenAndServe(":80", m); err != nil {
