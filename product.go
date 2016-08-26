@@ -48,7 +48,7 @@ type Products struct {
 
 type ProductHandler struct {
 	Sess *mgo.Session
-	Db string
+	Db   string
 }
 
 func (this *ProductHandler) Post(w http.ResponseWriter, r *http.Request) {
@@ -116,7 +116,7 @@ func (this *ProductHandler) Get(w http.ResponseWriter, r *http.Request) {
 		query.ShopId = bson.ObjectIdHex(query.Shop)
 	}
 	products := new(Products)
-	if err := sess.DB(this.Db).C("products").Find(&query).Select(&bson.M{"info": 0, "props": 0, "spec": 0}).Skip(query.Skip).Limit(query.Limit).Sort("-date").All(&products.Data); err != nil {
+	if err := sess.DB(this.Db).C("products").Find(&query).Select(&bson.M{"info": 0, "props": 0, "spec": 0}).Skip(query.Skip).Limit(query.Limit).Sort(query.Sort).All(&products.Data); err != nil {
 		response.InternalServerError(w, err.Error())
 		return
 	}
