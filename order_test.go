@@ -17,3 +17,8 @@ func TestOrderSchema(t *testing.T) {
 	NewDecoder().Decode(order, v1)
 	t.Log(order)
 }
+
+func TestGetPayUrl(t *testing.T) {
+	str, _ := GetPayUrl("123", "test", 1.22, "http://")
+	t.Log(str)
+}

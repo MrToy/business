@@ -16,7 +16,7 @@ type Product struct {
 	Date      time.Time     `json:"date" bson:",omitempty" schema:"-"`
 	Name      string        `json:"name" validate:"min=1,max=40"`
 	Images    []string      `json:"images"`
-	Price     int           `json:"price"`
+	Price     float64       `json:"price"`
 	Inventory int           `json:"inventory"`
 	Active    bool          `json:"active"`
 	Info      string        `json:"info,omitempty"`

@@ -24,6 +24,7 @@ func main() {
 	shopHandler := &business.ShopHandler{sess, MongoDB}
 	productHandler := &business.ProductHandler{sess, MongoDB}
 	orderHandler := &business.OrderHandler{sess, MongoDB}
+	payHandler := &business.PayHandler{sess, MongoDB}
 	m := app.New()
 
 	m.Post("/shops", shopHandler.Post)
@@ -38,9 +39,15 @@ func main() {
 	m.Get("/products/:id", productHandler.GetById)
 	m.Del("/products/:id", productHandler.DelById)
 
+	m.Put("/orders/confirm/:id", orderHandler.ConfirmById)
+	m.Put("/orders/cancle/:id", orderHandler.CancleById)
+	m.Put("/orders/deliver/:id", orderHandler.DeliverById)
 	m.Post("/orders", orderHandler.Post)
 	m.Get("/orders", orderHandler.Get)
 	m.Get("/orders/:id", orderHandler.GetById)
+
+	m.Post("/pay", payHandler.Notify)
+	m.Get("/pay/:id", payHandler.RedirectById)
 	// m.Put("/orders/:id", productHandler.PutById)
 
 	// m.Del("/products/:id", productHandler.DelById)
